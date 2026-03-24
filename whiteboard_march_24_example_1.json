@@ -1,0 +1,73 @@
+{
+  "nodes": [
+    {
+      "id": "node-1774384088856",
+      "x": 419,
+      "y": 287,
+      "type": "card",
+      "colorName": "coral",
+      "tag": "Idea",
+      "title": "Welcome!",
+      "content": "Double-click anywhere to add cards. Drag to move."
+    },
+    {
+      "id": "node-1774384097872",
+      "x": 799,
+      "y": 287,
+      "type": "card",
+      "colorName": "coral",
+      "tag": "Idea",
+      "title": "",
+      "content": ""
+    },
+    {
+      "id": "node-1774384098248",
+      "x": 799,
+      "y": 448,
+      "type": "card",
+      "colorName": "coral",
+      "tag": "Idea",
+      "title": "",
+      "content": ""
+    },
+    {
+      "id": "node-1774384098424",
+      "x": 799,
+      "y": 609,
+      "type": "card",
+      "colorName": "coral",
+      "tag": "Idea",
+      "title": "",
+      "content": ""
+    }
+  ],
+  "arrows": [
+    {
+      "from": "node-1774384088856",
+      "to": "node-1774384097872",
+      "x1": 569,
+      "y1": 352.5,
+      "x2": 879,
+      "y2": 341
+    },
+    {
+      "from": "node-1774384088856",
+      "to": "node-1774384098248",
+      "x1": 569,
+      "y1": 352.5,
+      "x2": 879,
+      "y2": 502
+    },
+    {
+      "from": "node-1774384088856",
+      "to": "node-1774384098424",
+      "x1": 569,
+      "y1": 352.5,
+      "x2": 879,
+      "y2": 663
+    }
+  ],
+  "zoom": 1,
+  "panX": 0,
+  "panY": 0
+}

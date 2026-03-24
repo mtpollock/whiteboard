@@ -195,9 +195,17 @@
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    opacity: 0.65;
+    opacity: 0.75;
     color: #fff;
+    outline: none;
+    cursor: text;
+    border-radius: 3px;
+    padding: 1px 3px;
+    min-width: 16px;
+    transition: background 0.12s, opacity 0.12s;
   }
+  .card-tag:hover { opacity: 1; background: rgba(255,255,255,0.15); }
+  .card-tag:focus { opacity: 1; background: rgba(255,255,255,0.22); }
 
   .card-actions {
     display: flex;
@@ -476,6 +484,19 @@
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
     Clear
   </button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="saveBoard()" title="Save board (Ctrl+S)">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h10V6l-3-3H3v10z"/><path d="M6 13V9h4v4"/><path d="M6 3v3h5"/></svg>
+    Save
+  </button>
+  <button class="tb-btn" onclick="loadBoard()" title="Load a saved board">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v3h12v-3"/><path d="M8 2v7"/><path d="M5 6l3 3 3-3"/></svg>
+    Load
+  </button>
+  <button class="tb-btn" onclick="exportHTML()" title="Export as shareable HTML file">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="4" cy="8" r="1.5"/><line x1="5.4" y1="7.3" x2="10.6" y2="4.7"/><line x1="5.4" y1="8.7" x2="10.6" y2="11.3"/></svg>
+    Send
+  </button>
 </div>
 
 <div id="zoom-label">100%</div>
@@ -582,9 +603,9 @@ function applyTransform() {
 }
 
 // ── Card creation ──────────────────────────────────────────────────────────
-function createCard(cx, cy, colorOverride) {
+function createCard(cx, cy, colorOverride, forceId) {
   const col = colorOverride || activeColor;
-  const id = 'node-' + Date.now();
+  const id = forceId || 'node-' + Date.now();
   const div = document.createElement('div');
   div.className = 'card';
   div.id = id;
@@ -594,7 +615,7 @@ function createCard(cx, cy, colorOverride) {
 
   div.innerHTML = `
     <div class="card-header" style="background:${col.bg}">
-      <span class="card-tag">Idea</span>
+      <span class="card-tag" contenteditable="true" spellcheck="false">Idea</span>
       <div class="card-actions">
         <button class="card-btn" onclick="deleteNode('${id}')" title="Delete">✕</button>
       </div>
@@ -612,15 +633,15 @@ function createCard(cx, cy, colorOverride) {
   makeDraggable(div);
   makeResizable(div);
 
-  // Auto-focus title
-  setTimeout(() => div.querySelector('.card-title').focus(), 50);
+  // Auto-focus title (skip when restoring from saved data)
+  if (!forceId) setTimeout(() => div.querySelector('.card-title').focus(), 50);
   hideHint();
   return div;
 }
 
 // ── Label creation ─────────────────────────────────────────────────────────
-function createLabel(cx, cy) {
-  const id = 'node-' + Date.now();
+function createLabel(cx, cy, forceId) {
+  const id = forceId || 'node-' + Date.now();
   const div = document.createElement('div');
   div.className = 'label-node';
   div.id = id;
@@ -634,7 +655,7 @@ function createLabel(cx, cy) {
   nodes.push({ id, el: div, x: cx, y: cy, type: 'label' });
   makeDraggable(div);
 
-  setTimeout(() => div.focus(), 50);
+  if (!forceId) setTimeout(() => div.focus(), 50);
   hideHint();
   return div;
 }
@@ -1055,6 +1076,7 @@ document.addEventListener('keydown', e => {
     }
   }
   if (e.key === '0' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); resetView(); }
+  if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveBoard(); }
 });
 
 // ── Utilities ──────────────────────────────────────────────────────────────
@@ -1086,21 +1108,118 @@ board.addEventListener('click', e => {
   }
 });
 
+// ── Serialize / Restore ────────────────────────────────────────────────────
+function serializeBoard() {
+  const serialNodes = nodes.map(n => {
+    const el = document.getElementById(n.id);
+    const base = { id: n.id, x: n.x, y: n.y, type: n.type };
+    if (n.type === 'card') {
+      const headerBg = el?.querySelector('.card-header')?.style.background || '';
+      const col = COLORS.find(c => c.bg === headerBg) || COLORS[0];
+      base.colorName = col.name;
+      base.tag     = el?.querySelector('.card-tag')?.textContent || 'Idea';
+      base.title   = el?.querySelector('.card-title')?.textContent || '';
+      base.content = el?.querySelector('.card-content')?.textContent || '';
+      if (el?.style.width)     base.width = el.style.width;
+      if (el?.style.minHeight) base.minHeight = el.style.minHeight;
+    } else if (n.type === 'label') {
+      base.text = el?.textContent || '';
+    }
+    return base;
+  });
+  const serialArrows = arrows.map(a => ({ from: a.from, to: a.to, x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2 }));
+  return { nodes: serialNodes, arrows: serialArrows, zoom, panX, panY };
+}
+
+function restoreBoard(data) {
+  nodes.forEach(n => document.getElementById(n.id)?.remove());
+  nodes = [];
+  arrows.forEach(a => a.el?.remove());
+  arrows = [];
+  hint.classList.add('hidden');
+
+  if (data.zoom != null) zoom = data.zoom;
+  if (data.panX != null) panX = data.panX;
+  if (data.panY != null) panY = data.panY;
+  applyTransform();
+
+  (data.nodes || []).forEach(n => {
+    if (n.type === 'card') {
+      const col = COLORS.find(c => c.name === n.colorName) || COLORS[0];
+      const el = createCard(n.x, n.y, col, n.id);
+      if (n.tag)      el.querySelector('.card-tag').textContent = n.tag;
+      if (n.title)    el.querySelector('.card-title').textContent = n.title;
+      if (n.content)  el.querySelector('.card-content').textContent = n.content;
+      if (n.width)    el.style.width = n.width;
+      if (n.minHeight) el.style.minHeight = n.minHeight;
+    } else if (n.type === 'label') {
+      const el = createLabel(n.x, n.y, n.id);
+      if (n.text) el.textContent = n.text;
+    }
+  });
+
+  (data.arrows || []).forEach(a => createArrow(a.x1, a.y1, a.x2, a.y2, a.from, a.to));
+}
+
+// ── Save / Load / Export ───────────────────────────────────────────────────
+function saveBoard() {
+  const blob = new Blob([JSON.stringify(serializeBoard(), null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'whiteboard.json'; a.click();
+  URL.revokeObjectURL(url);
+  showStatus('Board saved!');
+}
+
+function loadBoard() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try { restoreBoard(JSON.parse(ev.target.result)); showStatus('Board loaded!'); }
+      catch { showStatus('Could not read file — is it a saved whiteboard?'); }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function exportHTML() {
+  const data = JSON.stringify(serializeBoard());
+  // Inject the board data into a copy of this page so it auto-restores when opened
+  let html = document.documentElement.outerHTML;
+  html = html.replace('</head>', `<script>var WHITEBOARD_DATA=${data};<\/script></head>`);
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'whiteboard.html'; a.click();
+  URL.revokeObjectURL(url);
+  showStatus('Exported! Share the .html file — anyone can open it.');
+}
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 initColors();
 applyTransform();
 
-// Seed one example card so the board doesn't feel empty
-setTimeout(() => {
-  const c = createCard(
-    window.innerWidth / 2 / zoom - 100,
-    window.innerHeight / 2 / zoom - 70,
-    COLORS[1]
-  );
-  c.querySelector('.card-title').textContent = 'Welcome!';
-  c.querySelector('.card-content').textContent = 'Double-click anywhere to add cards. Drag to move.';
-  c.querySelector('.card-title').blur();
-}, 200);
+if (typeof WHITEBOARD_DATA !== 'undefined') {
+  // Restore from an exported/sent file
+  restoreBoard(WHITEBOARD_DATA);
+} else {
+  // Seed one example card so the board doesn't feel empty
+  setTimeout(() => {
+    const c = createCard(
+      window.innerWidth / 2 / zoom - 100,
+      window.innerHeight / 2 / zoom - 70,
+      COLORS[1]
+    );
+    c.querySelector('.card-title').textContent = 'Welcome!';
+    c.querySelector('.card-content').textContent = 'Double-click anywhere to add cards. Drag to move.';
+    c.querySelector('.card-title').blur();
+  }, 200);
+}
 </script>
 </body>
 </html>
