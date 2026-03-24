@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whiteboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f0e8;
+    --paper: #fffef9;
+    --ink: #1a1814;
+    --ink-light: #6b6660;
+    --accent: #e85d2f;
+    --accent2: #3d7ebf;
+    --accent3: #2eb87a;
+    --accent4: #c7a020;
+    --shadow: rgba(0,0,0,0.12);
+    --shadow-strong: rgba(0,0,0,0.22);
+    --toolbar-bg: #1a1814;
+    --toolbar-text: #f5f0e8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    cursor: default;
+    user-select: none;
+  }
+
+  /* Canvas grid background */
+  #board {
+    position: absolute;
+    inset: 0;
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(circle, #c8bfaf 1px, transparent 1px);
+    background-size: 28px 28px;
+    overflow: hidden;
+  }
+
+  #canvas-layer {
+    position: absolute;
+    inset: 0;
+    transform-origin: 0 0;
+  }
+
+  /* ── Toolbar ── */
+  #toolbar {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: var(--toolbar-bg);
+    color: var(--toolbar-text);
+    border-radius: 16px;
+    padding: 6px 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
+    z-index: 1000;
+    font-size: 12px;
+  }
+
+  .tb-sep {
+    width: 1px;
+    height: 28px;
+    background: rgba(255,255,255,0.12);
+    margin: 0 4px;
+  }
+
+  .tb-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    background: none;
+    border: none;
+    color: rgba(245,240,232,0.7);
+    cursor: pointer;
+    padding: 5px 10px;
+    border-radius: 10px;
+    transition: background 0.15s, color 0.15s, transform 0.1s;
+    font-size: 11px;
+    font-family: 'DM Sans', sans-serif;
+    white-space: nowrap;
+  }
+  .tb-btn svg { display: block; }
+  .tb-btn:hover {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    transform: translateY(-1px);
+  }
+  .tb-btn.active {
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+  }
+
+  .color-dot {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color 0.15s, transform 0.15s;
+    flex-shrink: 0;
+  }
+  .color-dot:hover { transform: scale(1.2); }
+  .color-dot.selected { border-color: white; transform: scale(1.1); }
+
+  .colors-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 4px;
+  }
+
+  /* ── Cards ── */
+  .card {
+    position: absolute;
+    min-width: 160px;
+    max-width: 300px;
+    background: var(--paper);
+    border-radius: 4px 14px 14px 14px;
+    box-shadow: 3px 4px 0px rgba(0,0,0,0.15), 0 8px 24px var(--shadow);
+    padding: 0;
+    cursor: grab;
+    transition: box-shadow 0.15s, transform 0.1s;
+    font-family: 'Caveat', cursive;
+    transform-origin: center center;
+    will-change: transform;
+  }
+  .card:hover {
+    box-shadow: 4px 6px 0px rgba(0,0,0,0.18), 0 12px 32px var(--shadow-strong);
+    z-index: 500 !important;
+  }
+  .card.dragging {
+    cursor: grabbing;
+    box-shadow: 6px 10px 0px rgba(0,0,0,0.2), 0 20px 48px var(--shadow-strong);
+    transform: rotate(1.5deg) scale(1.03);
+    z-index: 999 !important;
+    transition: box-shadow 0.1s;
+  }
+
+  /* ── Branch button (mind-map quick-connect) ── */
+  .card-branch {
+    position: absolute;
+    right: -15px;
+    top: 50%;
+    transform: translateY(-50%) scale(0.85);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--accent2);
+    border: 2.5px solid var(--paper);
+    color: #fff;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s, transform 0.15s, background 0.12s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.22);
+    z-index: 10;
+    padding-bottom: 1px;
+  }
+  .card:hover .card-branch {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+  .card-branch:hover {
+    background: #2563a8;
+    transform: translateY(-50%) scale(1.18) !important;
+  }
+
+  .card-header {
+    height: 28px;
+    border-radius: 4px 14px 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px 0 12px;
+  }
+
+  .card-tag {
+    font-size: 10px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.65;
+    color: #fff;
+  }
+
+  .card-actions {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .card:hover .card-actions { opacity: 1; }
+
+  .card-btn {
+    background: rgba(255,255,255,0.25);
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    width: 20px; height: 20px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    transition: background 0.12s;
+  }
+  .card-btn:hover { background: rgba(255,255,255,0.45); }
+
+  .card-body {
+    padding: 10px 14px 14px;
+  }
+
+  .card-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.25;
+    outline: none;
+    min-height: 28px;
+    word-break: break-word;
+  }
+  .card-title:empty:before {
+    content: 'Idea...';
+    color: #bbb;
+  }
+
+  .card-content {
+    font-size: 16px;
+    font-weight: 400;
+    color: var(--ink-light);
+    line-height: 1.45;
+    outline: none;
+    min-height: 20px;
+    margin-top: 5px;
+    word-break: break-word;
+  }
+  .card-content:empty:before {
+    content: 'Notes...';
+    color: #ccc;
+  }
+
+  .card-resize {
+    position: absolute;
+    bottom: 4px;
+    right: 6px;
+    cursor: se-resize;
+    color: rgba(0,0,0,0.2);
+    font-size: 12px;
+    line-height: 1;
+  }
+  .card:hover .card-resize { color: rgba(0,0,0,0.35); }
+
+  /* ── Arrow tool ── */
+  #svg-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: visible;
+  }
+  #svg-overlay.drawing-arrow {
+    pointer-events: all;
+    cursor: crosshair;
+  }
+
+  .arrow-line {
+    stroke: var(--ink);
+    stroke-width: 2;
+    fill: none;
+    marker-end: url(#arrowhead);
+    pointer-events: stroke;
+    cursor: pointer;
+    transition: stroke 0.15s;
+  }
+  .arrow-line:hover { stroke: var(--accent); }
+  .arrow-line.selected-arrow { stroke: var(--accent2); }
+
+  /* ── Connection preview ── */
+  #arrow-preview {
+    stroke: var(--ink-light);
+    stroke-width: 2;
+    stroke-dasharray: 6 4;
+    fill: none;
+    marker-end: url(#arrowhead-preview);
+    pointer-events: none;
+  }
+
+  /* ── Labels / Headings ── */
+  .label-node {
+    position: absolute;
+    font-family: 'Caveat', cursive;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--ink);
+    cursor: grab;
+    outline: none;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 2px dashed transparent;
+    min-width: 80px;
+    transition: border-color 0.15s;
+    white-space: nowrap;
+  }
+  .label-node:hover { border-color: rgba(0,0,0,0.18); }
+  .label-node.dragging { cursor: grabbing; }
+  .label-node:empty:before { content: 'Heading'; color: #bbb; }
+
+  /* ── Status bar ── */
+  #statusbar {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(26,24,20,0.75);
+    color: rgba(245,240,232,0.8);
+    font-size: 11px;
+    font-family: 'DM Sans', sans-serif;
+    padding: 4px 14px;
+    border-radius: 20px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 2000;
+    backdrop-filter: blur(6px);
+  }
+  #statusbar.show { opacity: 1; }
+
+  /* ── Zoom indicator ── */
+  #zoom-label {
+    position: fixed;
+    bottom: 90px;
+    right: 24px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    color: var(--ink-light);
+    background: rgba(245,240,232,0.85);
+    padding: 3px 9px;
+    border-radius: 8px;
+    pointer-events: none;
+    z-index: 900;
+  }
+
+  /* ── Context menu ── */
+  #ctx-menu {
+    position: fixed;
+    background: var(--toolbar-bg);
+    color: var(--toolbar-text);
+    border-radius: 10px;
+    padding: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    z-index: 2000;
+    display: none;
+    min-width: 140px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+  }
+  #ctx-menu.show { display: block; }
+  .ctx-item {
+    padding: 7px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 0.12s;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .ctx-item:hover { background: rgba(255,255,255,0.12); }
+  .ctx-sep { height: 1px; background: rgba(255,255,255,0.1); margin: 3px 0; }
+
+  /* ── Multi-select highlight ── */
+  .card.selected {
+    outline: 2.5px solid var(--accent2);
+    outline-offset: 3px;
+  }
+  .label-node.selected {
+    border-color: var(--accent2) !important;
+    background: rgba(61,126,191,0.07);
+  }
+  .selection-box {
+    position: absolute;
+    border: 2px dashed var(--accent2);
+    background: rgba(61,126,191,0.07);
+    border-radius: 4px;
+    pointer-events: none;
+    z-index: 998;
+  }
+
+  /* ── Intro hint ── */
+  #hint {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+    opacity: 0.4;
+    z-index: 0;
+    transition: opacity 0.5s;
+  }
+  #hint.hidden { opacity: 0; }
+  #hint h2 {
+    font-family: 'Caveat', cursive;
+    font-size: 38px;
+    font-weight: 700;
+    color: var(--ink-light);
+    line-height: 1.2;
+  }
+  #hint p {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    color: var(--ink-light);
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+
+<div id="board">
+  <div id="canvas-layer">
+    <svg id="svg-overlay" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#1a1814"/>
+        </marker>
+        <marker id="arrowhead-preview" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#6b6660"/>
+        </marker>
+        <marker id="arrowhead-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#3d7ebf"/>
+        </marker>
+      </defs>
+      <path id="arrow-preview" d="" style="display:none"/>
+    </svg>
+  </div>
+</div>
+
+<div id="hint">
+  <h2>Your thinking space</h2>
+  <p>Double-click to add a card · Right-click for options · Scroll to zoom</p>
+</div>
+
+<div id="toolbar">
+  <button class="tb-btn active" id="tool-select" onclick="setTool('select')" title="Select & Move (V)">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3 1l10 6.5-4.5 1.5L11 14l-1.5.7-2.8-5.1L3 11z"/></svg>
+    Select
+  </button>
+  <button class="tb-btn" id="tool-card" onclick="setTool('card')" title="Add Card (C)">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="2"/><line x1="5" y1="7" x2="11" y2="7"/><line x1="5" y1="10" x2="9" y2="10"/></svg>
+    Card
+  </button>
+  <button class="tb-btn" id="tool-label" onclick="setTool('label')" title="Add Heading (H)">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h2v4h4V3h2v10h-2V9H4v4H2z"/></svg>
+    Heading
+  </button>
+  <button class="tb-btn" id="tool-arrow" onclick="setTool('arrow')" title="Draw Arrow (A)">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="2" y1="14" x2="13" y2="3"/><polyline points="7,3 13,3 13,9"/></svg>
+    Arrow
+  </button>
+  <div class="tb-sep"></div>
+  <div class="colors-row" id="colors-row">
+    <!-- filled by JS -->
+  </div>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="clearAll()" title="Clear board">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+    Clear
+  </button>
+</div>
+
+<div id="zoom-label">100%</div>
+<div id="statusbar"></div>
+<div id="ctx-menu"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let tool = 'select';
+let zoom = 1;
+let panX = 0, panY = 0;
+let isPanning = false;
+let panStart = null;
+let nodes = [];     // {id, el, x, y, type}
+let arrows = [];    // {id, el, from, to, x1,y1,x2,y2}
+let zCounter = 10;
+let selectedNode = null;
+let selectedArrow = null;
+
+// Multi-select state
+let selectedNodes = new Set(); // Set of node IDs
+let isRubberBanding = false;
+let rubberBandStart = null;
+let rubberBandEl = null;
+
+// Arrow drawing state
+let arrowDrawing = false;
+let arrowStart = null; // {x, y}
+
+const COLORS = [
+  { name: 'coral',  bg: '#e85d2f', light: '#fde8e1' },
+  { name: 'blue',   bg: '#3d7ebf', light: '#ddeaf8' },
+  { name: 'green',  bg: '#2eb87a', light: '#d4f5e7' },
+  { name: 'gold',   bg: '#c7a020', light: '#fdf3d0' },
+  { name: 'purple', bg: '#8b5cf6', light: '#ede9ff' },
+  { name: 'rose',   bg: '#d94e7b', light: '#fce4ed' },
+];
+let activeColor = COLORS[0];
+
+const board = document.getElementById('board');
+const canvasLayer = document.getElementById('canvas-layer');
+const svgOverlay = document.getElementById('svg-overlay');
+const arrowPreview = document.getElementById('arrow-preview');
+const zoomLabel = document.getElementById('zoom-label');
+const hint = document.getElementById('hint');
+const ctxMenu = document.getElementById('ctx-menu');
+
+// ── Selection helpers ──────────────────────────────────────────────────────
+function selectNode(id) {
+  selectedNodes.add(id);
+  document.getElementById(id)?.classList.add('selected');
+}
+
+function clearSelection() {
+  selectedNodes.forEach(id => document.getElementById(id)?.classList.remove('selected'));
+  selectedNodes.clear();
+}
+
+// ── Init colors ────────────────────────────────────────────────────────────
+function initColors() {
+  const row = document.getElementById('colors-row');
+  COLORS.forEach(c => {
+    const dot = document.createElement('div');
+    dot.className = 'color-dot' + (c === activeColor ? ' selected' : '');
+    dot.style.background = c.bg;
+    dot.title = c.name;
+    dot.addEventListener('click', () => {
+      activeColor = c;
+      document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('selected'));
+      dot.classList.add('selected');
+    });
+    row.appendChild(dot);
+  });
+}
+
+// ── Tool switching ─────────────────────────────────────────────────────────
+function setTool(t) {
+  tool = t;
+  document.querySelectorAll('.tb-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tool-' + t)?.classList.add('active');
+  board.style.cursor = t === 'card' || t === 'label' ? 'crosshair' : 'default';
+  svgOverlay.classList.toggle('drawing-arrow', t === 'arrow');
+  if (t !== 'arrow') { arrowDrawing = false; arrowPreview.style.display = 'none'; }
+}
+
+// ── Status bar ─────────────────────────────────────────────────────────────
+let statusTimer;
+function showStatus(msg) {
+  const sb = document.getElementById('statusbar');
+  sb.textContent = msg;
+  sb.classList.add('show');
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => sb.classList.remove('show'), 1800);
+}
+
+// ── Coordinate helpers ─────────────────────────────────────────────────────
+function boardToCanvas(bx, by) {
+  return { x: (bx - panX) / zoom, y: (by - panY) / zoom };
+}
+
+function applyTransform() {
+  canvasLayer.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+  zoomLabel.textContent = Math.round(zoom * 100) + '%';
+}
+
+// ── Card creation ──────────────────────────────────────────────────────────
+function createCard(cx, cy, colorOverride) {
+  const col = colorOverride || activeColor;
+  const id = 'node-' + Date.now();
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.id = id;
+  div.style.left = cx + 'px';
+  div.style.top = cy + 'px';
+  div.style.zIndex = ++zCounter;
+
+  div.innerHTML = `
+    <div class="card-header" style="background:${col.bg}">
+      <span class="card-tag">Idea</span>
+      <div class="card-actions">
+        <button class="card-btn" onclick="deleteNode('${id}')" title="Delete">✕</button>
+      </div>
+    </div>
+    <div class="card-body" style="background:${col.light}">
+      <div class="card-title" contenteditable="true" spellcheck="false"></div>
+      <div class="card-content" contenteditable="true" spellcheck="false"></div>
+    </div>
+    <div class="card-resize" title="Resize">⊿</div>
+    <button class="card-branch" onclick="branchCard('${id}')" title="Branch — add connected card">+</button>
+  `;
+
+  canvasLayer.appendChild(div);
+  nodes.push({ id, el: div, x: cx, y: cy, type: 'card' });
+  makeDraggable(div);
+  makeResizable(div);
+
+  // Auto-focus title
+  setTimeout(() => div.querySelector('.card-title').focus(), 50);
+  hideHint();
+  return div;
+}
+
+// ── Label creation ─────────────────────────────────────────────────────────
+function createLabel(cx, cy) {
+  const id = 'node-' + Date.now();
+  const div = document.createElement('div');
+  div.className = 'label-node';
+  div.id = id;
+  div.style.left = cx + 'px';
+  div.style.top = cy + 'px';
+  div.style.zIndex = ++zCounter;
+  div.contentEditable = 'true';
+  div.spellcheck = false;
+
+  canvasLayer.appendChild(div);
+  nodes.push({ id, el: div, x: cx, y: cy, type: 'label' });
+  makeDraggable(div);
+
+  setTimeout(() => div.focus(), 50);
+  hideHint();
+  return div;
+}
+
+// ── Branch card (mind-map quick-connect) ───────────────────────────────────
+function branchCard(fromId) {
+  const fromEl = document.getElementById(fromId);
+  const fromNode = nodes.find(n => n.id === fromId);
+  if (!fromEl || !fromNode) return;
+
+  // Stagger vertically based on how many branches already exist
+  const outgoing = arrows.filter(a => a.from === fromId).length;
+  const gap = 80;
+  const cardW = fromEl.offsetWidth || 200;
+  const cardH = fromEl.offsetHeight || 120;
+  const newX = fromNode.x + cardW + gap;
+  const newY = fromNode.y + outgoing * (cardH + 30);
+
+  // Inherit the same color as the parent card
+  const headerBg = fromEl.querySelector('.card-header')?.style.background;
+  const matchedColor = COLORS.find(c => c.bg === headerBg) || activeColor;
+
+  const newCard = createCard(newX, newY, matchedColor);
+
+  // Draw the connecting arrow after the new card is rendered
+  setTimeout(() => {
+    const c1 = getNodeCenter(fromId);
+    const c2 = getNodeCenter(newCard.id);
+    if (c1 && c2) createArrow(c1.x, c1.y, c2.x, c2.y, fromId, newCard.id);
+    showStatus('Branch created — keep going!');
+  }, 30);
+}
+
+// ── Draggable ──────────────────────────────────────────────────────────────
+function makeDraggable(el) {
+  let startX, startY, origPositions, dragging = false;
+
+  el.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    if (tool === 'arrow') return;
+
+    e.stopPropagation();
+
+    // Update selection: if not already selected, clear and select just this one
+    if (!selectedNodes.has(el.id)) {
+      clearSelection();
+      selectNode(el.id);
+    }
+    // (if already selected, keep the full group selected)
+
+    el.style.zIndex = ++zCounter;
+    startX = e.clientX;
+    startY = e.clientY;
+
+    // Snapshot original positions of all nodes in the selection
+    const dragIds = selectedNodes.size > 0 ? [...selectedNodes] : [el.id];
+    origPositions = dragIds.map(id => {
+      const node = document.getElementById(id);
+      return { id, el: node, x: parseInt(node?.style.left) || 0, y: parseInt(node?.style.top) || 0 };
+    });
+
+    const onMove = (me) => {
+      const dx = (me.clientX - startX) / zoom;
+      const dy = (me.clientY - startY) / zoom;
+      if (!dragging && Math.abs(dx) + Math.abs(dy) > 3) {
+        dragging = true;
+        origPositions.forEach(p => p.el?.classList.add('dragging'));
+        document.activeElement?.blur();
+      }
+      if (dragging) {
+        origPositions.forEach(({ el: n, x, y, id }) => {
+          if (!n) return;
+          n.style.left = (x + dx) + 'px';
+          n.style.top = (y + dy) + 'px';
+          updateArrowsForNode(id);
+        });
+      }
+    };
+
+    const onUp = () => {
+      if (dragging) {
+        origPositions.forEach(({ el: n, id }) => {
+          if (!n) return;
+          n.classList.remove('dragging');
+          const node = nodes.find(nd => nd.id === id);
+          if (node) { node.x = parseInt(n.style.left); node.y = parseInt(n.style.top); }
+        });
+        dragging = false;
+      }
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
+}
+
+// ── Resizable ──────────────────────────────────────────────────────────────
+function makeResizable(cardEl) {
+  const handle = cardEl.querySelector('.card-resize');
+  if (!handle) return;
+
+  handle.addEventListener('mousedown', e => {
+    e.stopPropagation();
+    e.preventDefault();
+    const startW = cardEl.offsetWidth;
+    const startH = cardEl.offsetHeight;
+    const sx = e.clientX, sy = e.clientY;
+
+    const onMove = (me) => {
+      const dw = (me.clientX - sx) / zoom;
+      const dh = (me.clientY - sy) / zoom;
+      cardEl.style.width = Math.max(160, startW + dw) + 'px';
+      cardEl.style.minHeight = Math.max(80, startH + dh) + 'px';
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  });
+}
+
+// ── Delete node ────────────────────────────────────────────────────────────
+function deleteNode(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+  nodes = nodes.filter(n => n.id !== id);
+  // Remove connected arrows
+  arrows.filter(a => a.from === id || a.to === id).forEach(a => a.el?.remove());
+  arrows = arrows.filter(a => a.from !== id && a.to !== id);
+}
+
+// ── Arrows ─────────────────────────────────────────────────────────────────
+function getNodeCenter(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const x = parseInt(el.style.left) + el.offsetWidth / 2;
+  const y = parseInt(el.style.top) + el.offsetHeight / 2;
+  return { x, y };
+}
+
+function createArrow(x1, y1, x2, y2, fromId, toId) {
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.classList.add('arrow-line');
+  const d = computeArrowPath(x1, y1, x2, y2);
+  path.setAttribute('d', d);
+  svgOverlay.appendChild(path);
+
+  const id = 'arrow-' + Date.now();
+  const arrow = { id, el: path, from: fromId || null, to: toId || null, x1, y1, x2, y2 };
+  arrows.push(arrow);
+
+  path.addEventListener('click', (e) => {
+    e.stopPropagation();
+    selectArrow(arrow);
+  });
+  return arrow;
+}
+
+function computeArrowPath(x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const cx1 = x1 + dx * 0.5, cy1 = y1;
+  const cx2 = x1 + dx * 0.5, cy2 = y2;
+  // Trim end so arrowhead doesn't overlap card
+  const len = Math.sqrt(dx*dx + dy*dy);
+  if (len < 1) return `M${x1},${y1} L${x2},${y2}`;
+  const trim = 10 / len;
+  const ex = x2 - dx * trim, ey = y2 - dy * trim;
+  return `M${x1},${y1} C${cx1},${cy1} ${cx2},${cy2} ${ex},${ey}`;
+}
+
+function updateArrowsForNode(nodeId) {
+  arrows.forEach(a => {
+    if (a.from === nodeId || a.to === nodeId) {
+      const c1 = a.from ? getNodeCenter(a.from) : { x: a.x1, y: a.y1 };
+      const c2 = a.to ? getNodeCenter(a.to) : { x: a.x2, y: a.y2 };
+      if (c1 && c2) {
+        a.x1 = c1.x; a.y1 = c1.y;
+        a.x2 = c2.x; a.y2 = c2.y;
+        a.el?.setAttribute('d', computeArrowPath(a.x1, a.y1, a.x2, a.y2));
+      }
+    }
+  });
+}
+
+function selectArrow(arrow) {
+  arrows.forEach(a => a.el?.classList.remove('selected-arrow'));
+  arrow.el?.classList.add('selected-arrow');
+  selectedArrow = arrow;
+}
+
+// ── Board events ───────────────────────────────────────────────────────────
+board.addEventListener('dblclick', e => {
+  if (e.target !== board && e.target !== canvasLayer && !e.target.closest('#svg-overlay')) return;
+  const pos = boardToCanvas(e.clientX, e.clientY);
+  if (tool === 'select' || tool === 'card') {
+    createCard(pos.x - 80, pos.y - 40);
+  } else if (tool === 'label') {
+    createLabel(pos.x - 40, pos.y - 20);
+  }
+});
+
+board.addEventListener('mousedown', e => {
+  if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    // Middle-click or Alt+drag = pan
+    isPanning = true;
+    panStart = { x: e.clientX - panX, y: e.clientY - panY };
+    board.style.cursor = 'grabbing';
+    e.preventDefault();
+    return;
+  }
+
+  // Arrow tool
+  if (tool === 'arrow' && e.button === 0) {
+    const pos = boardToCanvas(e.clientX, e.clientY);
+    if (!arrowDrawing) {
+      arrowDrawing = true;
+      arrowStart = pos;
+      arrowPreview.style.display = '';
+    } else {
+      const end = pos;
+      // Check if we started/ended near a node
+      const fromNode = findNodeNear(arrowStart.x, arrowStart.y);
+      const toNode = findNodeNear(end.x, end.y);
+      createArrow(arrowStart.x, arrowStart.y, end.x, end.y, fromNode?.id, toNode?.id);
+      arrowDrawing = false;
+      arrowPreview.style.display = 'none';
+      showStatus('Arrow added');
+    }
+    return;
+  }
+
+  // Rubber-band selection (select tool, click on empty board)
+  if (tool === 'select' && e.button === 0 &&
+      (e.target === board || e.target === canvasLayer || e.target === svgOverlay)) {
+    clearSelection();
+    arrows.forEach(a => a.el?.classList.remove('selected-arrow'));
+    selectedArrow = null;
+
+    const pos = boardToCanvas(e.clientX, e.clientY);
+    isRubberBanding = true;
+    rubberBandStart = pos;
+    rubberBandEl = document.createElement('div');
+    rubberBandEl.className = 'selection-box';
+    rubberBandEl.style.left = pos.x + 'px';
+    rubberBandEl.style.top = pos.y + 'px';
+    rubberBandEl.style.width = '0px';
+    rubberBandEl.style.height = '0px';
+    canvasLayer.appendChild(rubberBandEl);
+    e.preventDefault();
+    return;
+  }
+
+  // Deselect when clicking empty board in other modes
+  if (e.target === board || e.target === canvasLayer) {
+    arrows.forEach(a => a.el?.classList.remove('selected-arrow'));
+    selectedArrow = null;
+  }
+});
+
+function findNodeNear(x, y, radius = 60) {
+  return nodes.find(n => {
+    const cx = n.x + (document.getElementById(n.id)?.offsetWidth || 80) / 2;
+    const cy = n.y + (document.getElementById(n.id)?.offsetHeight || 40) / 2;
+    return Math.hypot(cx - x, cy - y) < radius;
+  });
+}
+
+board.addEventListener('mousemove', e => {
+  if (isPanning) {
+    panX = e.clientX - panStart.x;
+    panY = e.clientY - panStart.y;
+    applyTransform();
+    return;
+  }
+  if (isRubberBanding && rubberBandEl) {
+    const pos = boardToCanvas(e.clientX, e.clientY);
+    const x = Math.min(pos.x, rubberBandStart.x);
+    const y = Math.min(pos.y, rubberBandStart.y);
+    const w = Math.abs(pos.x - rubberBandStart.x);
+    const h = Math.abs(pos.y - rubberBandStart.y);
+    rubberBandEl.style.left = x + 'px';
+    rubberBandEl.style.top = y + 'px';
+    rubberBandEl.style.width = w + 'px';
+    rubberBandEl.style.height = h + 'px';
+    return;
+  }
+  if (tool === 'arrow' && arrowDrawing) {
+    const pos = boardToCanvas(e.clientX, e.clientY);
+    arrowPreview.setAttribute('d', computeArrowPath(arrowStart.x, arrowStart.y, pos.x, pos.y));
+  }
+});
+
+board.addEventListener('mouseup', e => {
+  if (isPanning) {
+    isPanning = false;
+    board.style.cursor = tool === 'card' || tool === 'label' ? 'crosshair' : 'default';
+  }
+  if (isRubberBanding) {
+    isRubberBanding = false;
+    if (rubberBandEl) {
+      const pos = boardToCanvas(e.clientX, e.clientY);
+      const x1 = Math.min(pos.x, rubberBandStart.x);
+      const y1 = Math.min(pos.y, rubberBandStart.y);
+      const x2 = Math.max(pos.x, rubberBandStart.x);
+      const y2 = Math.max(pos.y, rubberBandStart.y);
+      // Only select if the band has meaningful size
+      if (x2 - x1 > 5 || y2 - y1 > 5) {
+        nodes.forEach(n => {
+          const el = document.getElementById(n.id);
+          if (!el) return;
+          const nx = n.x, ny = n.y;
+          const nw = el.offsetWidth, nh = el.offsetHeight;
+          if (nx < x2 && nx + nw > x1 && ny < y2 && ny + nh > y1) {
+            selectNode(n.id);
+          }
+        });
+        if (selectedNodes.size > 0) {
+          showStatus(`${selectedNodes.size} item${selectedNodes.size > 1 ? 's' : ''} selected`);
+        }
+      }
+      rubberBandEl.remove();
+      rubberBandEl = null;
+    }
+  }
+});
+
+// ── Zoom (scroll) ──────────────────────────────────────────────────────────
+board.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.1 : 0.91;
+  const newZoom = Math.min(3, Math.max(0.2, zoom * factor));
+  // Zoom toward cursor
+  const cx = e.clientX, cy = e.clientY;
+  panX = cx - (cx - panX) * (newZoom / zoom);
+  panY = cy - (cy - panY) * (newZoom / zoom);
+  zoom = newZoom;
+  applyTransform();
+}, { passive: false });
+
+// ── Context menu ───────────────────────────────────────────────────────────
+board.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const pos = boardToCanvas(e.clientX, e.clientY);
+  showCtxMenu(e.clientX, e.clientY, pos);
+});
+
+function showCtxMenu(mx, my, canvasPos) {
+  const menu = document.getElementById('ctx-menu');
+  menu.innerHTML = '';
+
+  const items = [
+    { label: '＋ Add Card', action: () => createCard(canvasPos.x - 80, canvasPos.y - 40) },
+    { label: '＋ Add Heading', action: () => createLabel(canvasPos.x - 40, canvasPos.y - 20) },
+  ];
+
+  if (selectedArrow) {
+    items.push({ sep: true });
+    items.push({ label: '✕ Delete Arrow', action: () => {
+      selectedArrow.el?.remove();
+      arrows = arrows.filter(a => a !== selectedArrow);
+      selectedArrow = null;
+    }});
+  }
+
+  items.push({ sep: true });
+  items.push({ label: '⟳ Reset view', action: resetView });
+
+  items.forEach(item => {
+    if (item.sep) {
+      const sep = document.createElement('div');
+      sep.className = 'ctx-sep';
+      menu.appendChild(sep);
+    } else {
+      const el = document.createElement('div');
+      el.className = 'ctx-item';
+      el.textContent = item.label;
+      el.addEventListener('click', () => { item.action(); hideCtxMenu(); });
+      menu.appendChild(el);
+    }
+  });
+
+  menu.style.left = Math.min(mx, window.innerWidth - 160) + 'px';
+  menu.style.top = Math.min(my, window.innerHeight - 200) + 'px';
+  menu.classList.add('show');
+}
+
+function hideCtxMenu() { document.getElementById('ctx-menu').classList.remove('show'); }
+document.addEventListener('click', hideCtxMenu);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    hideCtxMenu();
+    arrowDrawing = false;
+    arrowPreview.style.display = 'none';
+    clearSelection();
+  }
+});
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.contentEditable === 'true') return;
+  if (e.key === 'v' || e.key === 'V') setTool('select');
+  if (e.key === 'c' || e.key === 'C') setTool('card');
+  if (e.key === 'h' || e.key === 'H') setTool('label');
+  if (e.key === 'a' || e.key === 'A') setTool('arrow');
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (selectedNodes.size > 0) {
+      const toDelete = [...selectedNodes];
+      clearSelection();
+      toDelete.forEach(id => deleteNode(id));
+    } else if (selectedArrow) {
+      selectedArrow.el?.remove();
+      arrows = arrows.filter(a => a !== selectedArrow);
+      selectedArrow = null;
+    }
+  }
+  if (e.key === '0' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); resetView(); }
+});
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+function resetView() { zoom = 1; panX = 0; panY = 0; applyTransform(); showStatus('View reset'); }
+
+function clearAll() {
+  if (!confirm('Clear everything?')) return;
+  nodes.forEach(n => document.getElementById(n.id)?.remove());
+  nodes = [];
+  arrows.forEach(a => a.el?.remove());
+  arrows = [];
+  hint.classList.remove('hidden');
+  showStatus('Board cleared');
+}
+
+function hideHint() { hint.classList.add('hidden'); }
+
+// ── Click on board for card/label tool ────────────────────────────────────
+board.addEventListener('click', e => {
+  if (e.detail > 1) return; // skip double-click
+  if (e.target !== board && e.target !== canvasLayer) return;
+  const pos = boardToCanvas(e.clientX, e.clientY);
+  if (tool === 'card') {
+    createCard(pos.x - 80, pos.y - 40);
+    showStatus('Card added — click to keep adding');
+  } else if (tool === 'label') {
+    createLabel(pos.x - 40, pos.y - 20);
+    showStatus('Heading added');
+  }
+});
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+initColors();
+applyTransform();
+
+// Seed one example card so the board doesn't feel empty
+setTimeout(() => {
+  const c = createCard(
+    window.innerWidth / 2 / zoom - 100,
+    window.innerHeight / 2 / zoom - 70,
+    COLORS[1]
+  );
+  c.querySelector('.card-title').textContent = 'Welcome!';
+  c.querySelector('.card-content').textContent = 'Double-click anywhere to add cards. Drag to move.';
+  c.querySelector('.card-title').blur();
+}, 200);
+</script>
+</body>
+</html>
